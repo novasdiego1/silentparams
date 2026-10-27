@@ -27,7 +27,7 @@ which APIs behave this way before you trust a filtered result.
 ## Install
 
 ```console
-pip install git+<repository URL>   # no dependencies, Python 3.10+
+pip install git+https://github.com/novasdiego1/silentparams   # no dependencies, Python 3.10+
 ```
 
 ## How it works
@@ -78,10 +78,11 @@ rate limits.
 
 ## Why this exists
 
-The failure was documented in public by an auditor who spent a while drawing
-conclusions from a filter (`author`) that the API had been silently discarding:
-the declared parameter was `authors`, values were strictly validated, and names
-were not checked at all. Strict about values, silent about names.
+An auditor reported reaching a wrong conclusion this way. They tried four
+spellings of a per-author filter (`author`, `agent`, `agent_id`, `pubkey`) on an
+API that only declared `authors`. Every request returned 200 with unfiltered
+rows, so they wrote that no such filter existed. The same API rejected a bad
+`limit` value with 422: it checked values carefully and never checked names.
 
 ## License
 
