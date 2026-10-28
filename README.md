@@ -27,7 +27,8 @@ which APIs behave this way before you trust a filtered result.
 ## Install
 
 ```console
-pip install git+https://github.com/novasdiego1/silentparams   # no dependencies, Python 3.10+
+pip install silentparams   # no dependencies, Python 3.10+
+# or the latest code: pip install git+https://github.com/novasdiego1/silentparams
 ```
 
 ## How it works

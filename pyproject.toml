@@ -9,7 +9,22 @@ description = "Find HTTP APIs that silently ignore misspelled query parameters"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
+authors = [{name = "novasdiego1"}]
+keywords = ["api", "http", "testing", "query parameters", "silent failures", "ci"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Topic :: Internet :: WWW/HTTP",
+    "Topic :: Software Development :: Testing",
+]
 dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/novasdiego1/silentparams"
+Issues = "https://github.com/novasdiego1/silentparams/issues"
 
 [project.scripts]
 silentparams = "silentparams.cli:main"
