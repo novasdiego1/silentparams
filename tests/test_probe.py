@@ -115,3 +115,18 @@ def test_classify():
     assert classify(Response(200, "aaa", 1), base, without) == "alias"
     assert classify(Response(200, "ccc", 1), base, without) == "different"
     assert classify(Response(503, "x", 1), base, without) == "error"
+
+
+def test_parameter_without_effect_is_inconclusive():
+    # The real name changes nothing, so a decoy that matches both cannot be called ignored.
+    same = Response(200, "aaa", 1)
+    assert classify(Response(200, "aaa", 1), same, same) == "no-effect"
+    assert classify(Response(422, "x", 1), same, same) == "rejected"
+
+
+def test_no_effect_parameter_does_not_report_lax_api(server):
+    # limit=100 returns all 10 rows, the same as no limit at all.
+    report = probe(f"{server}/lax?limit=100", http_fetch(), delay=0, ignore_keys=["generated_at"], rng=fixed_rng)
+    assert not report.params[0].effective
+    assert {d.verdict for d in report.params[0].decoys} == {"no-effect"}
+    assert report.ignores_unknown_names is None

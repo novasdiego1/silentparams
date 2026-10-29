@@ -14,6 +14,7 @@ VERDICT_TEXT = {
     "rejected": "rejected (4xx)",
     "alias": "accepted as an alias",
     "different": "2xx, different response (inconclusive)",
+    "no-effect": "2xx, but the real parameter has no effect either (inconclusive)",
     "error": "server error or no response",
 }
 

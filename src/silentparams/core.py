@@ -13,7 +13,9 @@ Method, per query parameter in the URL you give:
 
 A decoy that answers 2xx with the same response as `without` was ignored
 silently. A decoy answered with 4xx was rejected (the safe behaviour). A decoy
-that answers like `baseline` is an accepted alias.
+that answers like `baseline` is an accepted alias. If `baseline` and `without`
+are the same, the parameter has no visible effect, so "ignored" and "alias"
+cannot be told apart and every 2xx decoy is inconclusive.
 """
 from __future__ import annotations
 
@@ -27,7 +29,7 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
-USER_AGENT = "silentparams/0.1 (read-only API probe)"
+USER_AGENT = "silentparams/0.1.1 (read-only API probe)"
 
 
 @dataclass(frozen=True)
@@ -42,7 +44,7 @@ class Response:
 class DecoyResult:
     name: str
     response: Response
-    verdict: str  # "ignored", "rejected", "alias", "different", "error"
+    verdict: str  # "ignored", "rejected", "alias", "different", "no-effect", "error"
 
 
 @dataclass
@@ -177,6 +179,8 @@ def classify(decoy: Response, baseline: Response, without: Response) -> str:
         return "error"
     if 400 <= decoy.status < 500:
         return "rejected"
+    if baseline.fingerprint == without.fingerprint:
+        return "no-effect"  # the real name changes nothing, so ignored and alias look the same
     same_as_without = decoy.fingerprint == without.fingerprint
     same_as_baseline = decoy.fingerprint == baseline.fingerprint
     if same_as_baseline and not same_as_without:

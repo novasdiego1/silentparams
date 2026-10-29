@@ -50,9 +50,11 @@ canonicalized, so key order does not matter):
 | `rejected` | 4xx: the API refuses unknown names (the safe behaviour) |
 | `alias` | 2xx and the same response as the baseline: the variant is accepted |
 | `different` | 2xx with some other response: inconclusive |
+| `no-effect` | 2xx, but removing `p` changes nothing either, so an ignored name and an alias look the same: inconclusive |
 
-It also tells you when removing `p` changes nothing, which usually means `p`
-itself is being ignored.
+When removing `p` changes nothing, `p` itself may be ignored, or the data may
+simply not depend on it. Pick a value that visibly filters the result before
+trusting the verdict.
 
 ## Options
 
