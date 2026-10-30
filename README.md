@@ -52,9 +52,13 @@ canonicalized, so key order does not matter):
 | `different` | 2xx with some other response: inconclusive |
 | `no-effect` | 2xx, but removing `p` changes nothing either, so an ignored name and an alias look the same: inconclusive |
 
-When removing `p` changes nothing, `p` itself may be ignored, or the data may
-simply not depend on it. Pick a value that visibly filters the result before
-trusting the verdict.
+When removing `p` changes nothing, `p` itself may be ignored, or its value may
+be the server default (`state=open` on an API that returns open items by
+default). To tell these apart, silentparams also sends `p=__silentparams__`. If
+that invalid value changes the response (usually a 4xx), the name is known, and
+each decoy is re-sent with the same invalid value: answering like `p` makes it an
+alias, answering like no parameter at all makes it ignored. If the invalid value
+changes nothing either, the decoys stay `no-effect`.
 
 ## Options
 
@@ -67,11 +71,13 @@ trusting the verdict.
 --json               machine-readable report
 ```
 
-Exit code: `1` if the API silently ignores unknown names, `0` if not, `2` on
-usage errors. That makes it usable as a CI check for an API you own.
+Exit code: `1` if the API silently ignores unknown names, `0` if it rejects
+them, `3` if the result is inconclusive, `2` on usage errors. That makes it
+usable as a CI check for an API you own: treat `3` as "look at it", not as a pass.
 
 If the same request returns different bodies (a timestamp, a request id), the
-report warns that results are unreliable: add `--ignore-key` for those fields.
+report warns that results are unreliable, lists the fields that changed between
+the two reads and suggests the matching `--ignore-key` flags.
 
 ## Be polite
 

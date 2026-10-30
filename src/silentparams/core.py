@@ -14,8 +14,11 @@ Method, per query parameter in the URL you give:
 A decoy that answers 2xx with the same response as `without` was ignored
 silently. A decoy answered with 4xx was rejected (the safe behaviour). A decoy
 that answers like `baseline` is an accepted alias. If `baseline` and `without`
-are the same, the parameter has no visible effect, so "ignored" and "alias"
-cannot be told apart and every 2xx decoy is inconclusive.
+are the same, the parameter has no visible effect (often because its value is
+the server default), so "ignored" and "alias" cannot be told apart. In that case
+the probe sends the real name with an invalid value: if that changes the
+response (typically a 4xx), the name is known, and each decoy is re-sent with
+the same invalid value to tell an alias from an ignored name.
 """
 from __future__ import annotations
 
@@ -29,7 +32,8 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
-USER_AGENT = "silentparams/0.1.1 (read-only API probe)"
+USER_AGENT = "silentparams/0.2 (read-only API probe)"
+INVALID_VALUE = "__silentparams__"  # a value no real filter should accept
 
 
 @dataclass(frozen=True)
@@ -53,6 +57,7 @@ class ParamReport:
     value: str
     effective: bool  # removing it changes the response
     without: Response
+    known: bool | None = None  # only for params without effect: an invalid value changes the response
     decoys: list[DecoyResult] = field(default_factory=list)
 
     @property
@@ -67,6 +72,7 @@ class Report:
     stable: bool  # the same request twice gave the same response
     params: list[ParamReport]
     requests: int
+    volatile: list[str] = field(default_factory=list)  # JSON paths that changed between the two baseline reads
 
     @property
     def ignores_unknown_names(self) -> bool | None:
@@ -149,6 +155,32 @@ def normalize(body: bytes, content_type: str, ignore_keys: Iterable[str] = ()) -
     return hashlib.sha256(body).hexdigest()[:16], items
 
 
+def volatile_paths(a: bytes, b: bytes, limit: int = 10) -> list[str]:
+    """JSON paths whose values differ between two reads of the same URL (list items shown as [])."""
+    try:
+        x, y = json.loads(a), json.loads(b)
+    except ValueError:
+        return []
+    out: set[str] = set()
+
+    def walk(u, v, path: str) -> None:
+        if isinstance(u, dict) and isinstance(v, dict):
+            for k in u.keys() | v.keys():
+                walk(u.get(k), v.get(k), f"{path}.{k}" if path else k)
+        elif isinstance(u, list) and isinstance(v, list) and len(u) == len(v):
+            for i, j in zip(u, v, strict=True):
+                walk(i, j, path + "[]")
+        elif u != v:
+            out.add(path or "(root)")
+
+    walk(x, y, "")
+    return sorted(out)[:limit]
+
+
+def same(a: Response, b: Response) -> bool:
+    return a.status == b.status and a.fingerprint == b.fingerprint
+
+
 Fetcher = Callable[[str], tuple[int, bytes, str]]
 
 
@@ -206,7 +238,7 @@ def probe(
     ignore = list(ignore_keys)
     count = 0
 
-    def get(u: str) -> Response:
+    def get_raw(u: str) -> tuple[Response, bytes]:
         nonlocal count
         if count >= max_requests:
             raise RuntimeError(f"request budget exhausted ({max_requests}); raise --max-requests")
@@ -216,12 +248,17 @@ def probe(
         try:
             status, body, ctype = fetch(u)
         except OSError:
-            return Response(0, "", 0)
+            return Response(0, "", 0), b""
         fp, items = normalize(body, ctype, ignore)
-        return Response(status, fp, len(body), items)
+        return Response(status, fp, len(body), items), body
 
-    baseline = get(url)
-    stable = get(url).fingerprint == baseline.fingerprint
+    def get(u: str) -> Response:
+        return get_raw(u)[0]
+
+    baseline, body_a = get_raw(url)
+    second, body_b = get_raw(url)
+    stable = second.fingerprint == baseline.fingerprint
+    volatile = [] if stable else volatile_paths(body_a, body_b)
     reports = []
     for i, (name, value) in enumerate(params):
         rest = params[:i] + params[i + 1:]
@@ -232,5 +269,19 @@ def probe(
                 continue
             r = get(with_params(url, rest[:i] + [(decoy, value)] + rest[i:]))
             report.decoys.append(DecoyResult(decoy, r, classify(r, baseline, without)))
+        if not report.effective:
+            # Removing the name changes nothing. If an invalid value does, the name is known and the
+            # decoys can be re-tested with that value: an alias answers like it, an ignored name like `without`.
+            invalid = get(with_params(url, rest[:i] + [(name, INVALID_VALUE)] + rest[i:]))
+            report.known = not same(invalid, without)
+            if report.known:
+                for d in report.decoys:
+                    if d.verdict != "no-effect":
+                        continue
+                    r = get(with_params(url, rest[:i] + [(d.name, INVALID_VALUE)] + rest[i:]))
+                    if same(r, invalid):
+                        d.verdict = "alias"
+                    elif same(r, without) and 200 <= r.status < 300:
+                        d.verdict = "ignored"
         reports.append(report)
-    return Report(url, baseline, stable, reports, count)
+    return Report(url, baseline, stable, reports, count, volatile)

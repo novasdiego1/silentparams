@@ -26,8 +26,18 @@ def render(report: Report) -> str:
     if not report.stable:
         lines.append("WARNING: the same request gave two different responses. Results are unreliable; "
                      "use --ignore-key for volatile fields (timestamps, request ids).")
+        if report.volatile:
+            keys = sorted({path.split(".")[-1].removesuffix("[]") for path in report.volatile})
+            lines.append(f"  Fields that changed between the two reads: {', '.join(report.volatile)}")
+            lines.append("  Try: " + " ".join(f"--ignore-key {k}" for k in keys))
     for p in report.params:
-        effect = "changes the response" if p.effective else "does NOT change the response (ignored or no-op?)"
+        if p.effective:
+            effect = "changes the response"
+        elif p.known:
+            effect = ("does NOT change the response, but an invalid value does: the name is known and "
+                      "the value is probably the default. Decoys re-tested with an invalid value")
+        else:
+            effect = "does NOT change the response, and neither does an invalid value (ignored or no-op?)"
         lines += ["", f"Parameter '{p.name}={p.value}': removing it {effect}"]
         for d in p.decoys:
             lines.append(f"  {d.name:<24} HTTP {d.response.status:<4} {VERDICT_TEXT[d.verdict]}")
@@ -70,7 +80,8 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps({**asdict(report), "ignores_unknown_names": report.ignores_unknown_names}, indent=2))
     else:
         print(render(report))
-    return 1 if report.ignores_unknown_names else 0
+    verdict = report.ignores_unknown_names
+    return 1 if verdict else 0 if verdict is False else 3
 
 
 if __name__ == "__main__":

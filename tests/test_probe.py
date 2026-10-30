@@ -79,6 +79,7 @@ def test_strict_api_passes(server):
 def test_volatile_field_makes_results_unstable_without_ignore_key(server):
     report = probe(f"{server}/lax?authors=alice", http_fetch(), delay=0, rng=fixed_rng)
     assert not report.stable
+    assert report.volatile == ["generated_at"]
 
 
 def test_request_budget_is_enforced(server):
@@ -124,9 +125,28 @@ def test_parameter_without_effect_is_inconclusive():
     assert classify(Response(422, "x", 1), same, same) == "rejected"
 
 
-def test_no_effect_parameter_does_not_report_lax_api(server):
-    # limit=100 returns all 10 rows, the same as no limit at all.
+def test_default_value_is_resolved_with_an_invalid_value(server):
+    # limit=100 returns all 10 rows, the same as no limit at all, but limit=__silentparams__ gets a 422,
+    # so the name is known; decoys with the invalid value still return 200 unfiltered, so they are ignored.
     report = probe(f"{server}/lax?limit=100", http_fetch(), delay=0, ignore_keys=["generated_at"], rng=fixed_rng)
-    assert not report.params[0].effective
+    p = report.params[0]
+    assert not p.effective and p.known
+    assert {d.verdict for d in p.decoys} == {"ignored"}
+    assert report.ignores_unknown_names is True
+
+
+def test_default_value_on_strict_api_still_rejects(server):
+    report = probe(f"{server}/strict?limit=100", http_fetch(), delay=0, ignore_keys=["generated_at"], rng=fixed_rng)
+    assert report.params[0].known
+    assert report.ignores_unknown_names is False
+
+
+def test_parameter_the_server_ignores_is_inconclusive(server, capsys):
+    # `kind` means nothing to the lax endpoint: no value changes the response, so decoys cannot be judged.
+    url = f"{server}/lax?kind=post"
+    report = probe(url, http_fetch(), delay=0, ignore_keys=["generated_at"], rng=fixed_rng)
+    assert report.params[0].known is False
     assert {d.verdict for d in report.params[0].decoys} == {"no-effect"}
     assert report.ignores_unknown_names is None
+    assert main([url, "--delay", "0", "--ignore-key", "generated_at"]) == 3
+    assert "inconclusive" in capsys.readouterr().out
